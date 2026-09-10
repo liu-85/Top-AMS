@@ -44,8 +44,8 @@ namespace mesp {
             gpio_config_t io_conf = {
                 1ull << IO,
                 GPIO_MODE_OUTPUT,
+                GPIO_PULLUP_DISABLE,
                 GPIO_PULLDOWN_ENABLE,
-                GPIO_PULLDOWN_DISABLE,
                 GPIO_INTR_DISABLE
             };
             gpio_config(&io_conf);
