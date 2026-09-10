@@ -12,11 +12,11 @@
 
 namespace mesp::config {
 
-    inline constexpr size_t MAX_GPIO = 20;//GPIO最大数量
+    inline constexpr size_t MAX_GPIO = 20;
 
-    inline gpio_num_t LED_R = GPIO_NUM_12;
-    inline gpio_num_t LED_L = GPIO_NUM_13;
+    inline gpio_num_t LED_R = GPIO_NUM_NC;
+    inline gpio_num_t LED_L = GPIO_NUM_NC;
 
-    inline gpio_num_t WIFI_LED = LED_R;//WIFI状态指示灯
+    inline gpio_num_t WIFI_LED = GPIO_NUM_NC;
 
 }//mesp::config

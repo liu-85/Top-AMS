@@ -2,41 +2,46 @@
 ![C++23](https://img.shields.io/badge/C%2B%2B-23-blue?logo=c%2B%2B&logoColor=white)
 ![VSCode](https://img.shields.io/badge/IDE-VSCode-007ACC?logo=visual-studio-code&logoColor=white)
 ![ESP-IDF v5.5.2](https://img.shields.io/badge/ESP--IDF-v5.5.2-green?logo=espressif&logoColor=white)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/nccrrv/Top-AMS)
 ![GitHub License](https://img.shields.io/github/license/nccrrv/Top-AMS)
 ## 简介
 - 本项目为拓竹打印机的第三方多色换色工程,追求更好的换色过程,更多的自定义配置以及更实惠的成本
-- 原理为在拓竹换色gcode中插入热床温度改变并暂停,热床温度会改变为对应的耗材通道,然后esp通过mqtt订阅得知热床温度,接着使用mqtt操作进退料并控制相应电机,最后恢复暂停继续打印
-- 目前支持PCB设计最多八个通道,但理论无通道数量上限
+- 原理为在拓竹换色gcode中插入热床温度改变并暂停,热床温度会改变为对应的耗材通道,然后esp通过mqtt订阅得知热床温度,接着使用mqtt操作进退料并控制相应机构,最后恢复暂停继续打印
+- 本版本采用 **1个H桥驱动电机 + 4个电磁离合** 方案,最多支持4个通道
 ## 指南
 首先需要准备以下硬件
 ### 主控模块
 - [合宙esp32C3](https://wiki.luatos.com/chips/esp32c3/board.html)
-- [PCB版](https://oshwhub.com/eda_xnlouvih/top-ams-8-tong-dao)(如果你只需要双色,也可以考虑直接在面包板上接线)
 
--
-  | 通道  | 前向GPIO | 后向GPIO |    备注     |
-  | :---: | :------- | :------- | :---------: |
-  | 通道1 | GPIO2    | GPIO3    |
-  | 通道2 | GPIO10   | GPIO6    |
-  | 通道3 | GPIO5    | GPIO4    |
-  | 通道4 | GPIO8    | GPIO9    |
-  | 通道5 | GPIO0    | GPIO1    |
-  | 通道6 | GPIO20   | GPIO21   |
-  | 通道7 | GPIO12   | GPIO13   | 和LED灯冲突 |
-  | 通道8 | GPIO18   | GPIO19   |  和USB冲突  |
+### 硬件接线 (4通道离合方案)
 
-- 使用通道7前,需要在web界面触发一次电机运行,激活后会使原先的所有灯语控制失效,避免干扰电机运行
-- typeC口如果是由会持续协商充电协议的充电器供电,或者使用espidf调试刷入等,GPIO18,19就会有电平变化<br>
-  经典版带串口芯片的不会有这个问题
+#### 主电机 H桥驱动 (AT8236)
+| 功能 | GPIO | 说明 |
+| :--: | :--- | :--- |
+| IN1  | GPIO2 | 电机正转控制 (接AT8236 IN1) |
+| IN2  | GPIO3 | 电机反转控制 (接AT8236 IN2) |
+
+#### 电磁离合通道
+| 通道  | 离合GPIO | 说明 |
+| :---: | :------- | :--- |
+| 通道1 | GPIO12   | 电磁离合1吸合控制 |
+| 通道2 | GPIO18   | 电磁离合2吸合控制 |
+| 通道3 | GPIO19   | 电磁离合3吸合控制 |
+| 通道4 | GPIO13   | 电磁离合4吸合控制 |
+
+#### 紧急停止
+| 功能 | GPIO | 说明 |
+| :--: | :--- | :--- |
+| 急停微动 | GPIO7 | 按下触发紧急停止,再次按下解除 |
+
+### 工作原理
+1. **进退料时**: 先吸合对应通道的电磁离合 (每次只吸合1个,确保互斥),然后驱动H桥主电机正转(进料)或反转(退料),完成后释放所有离合
+2. **互斥保证**: 每次操作前会释放所有电磁离合,确保不会同时吸合多个通道
+3. **紧急停止**: 按下微动IO7立即停止电机并释放所有离合,再次按下可解除停止状态
+
 ### 上下料模块
-- 上下料模块有多种电机方案,这些方案只是硬件设计不同,在与主控的接线上没有不同
-- [起源N20](hard/N20电机方案/README.md)
-  - 项目最早的设计方案
-- [TT电机](https://makerworld.com.cn/zh/models/1418429-gua-pei-topduo-se-da-yin-de-ttji-chu-ji-v2-0#profileId-1540158)
-  - 使用成本更低的TT电机
-- [N20D](https://makerworld.com.cn/zh/models/1464399-n20dian-ji-8tong-ji-chu-ji#profileId-1594882)
-  - 成对N20电机设计,有适配A1龙门的支架
+- 本方案使用单个直流电机配合AT8236 H桥驱动芯片,通过4个电磁离合选择对应通道
+- 离合吸合后,该通道的料轮与主电机传动连接,实现进退料
+- 机械结构设计需保证:离合吸合时通道料轮与主电机轴可靠连接,释放时完全断开
 
 ### 刷入固件
 - [固件刷入教程](https://docs.espressif.com/projects/esp-techpedia/zh_CN/latest/esp-friends/get-started/try-firmware/try-firmware-platform.html#esp-launchpad)
@@ -53,7 +58,7 @@
 ### 配置打印机gcode
 - 将对应机型的Gcode加入到打印机换色Gocde前
   - 目前只有A1mini的,但是其他打印机原理上也完全通用,只用改下几个数字就好,欢迎加群测试  
-- 打印机使用热床温度范围 **1~17** 与AMS传递通道信息,请避免设置这个范围内的热床温度
+- 打印机使用热床温度范围 **1~5** 与AMS传递通道信息(1~4对应4个通道),请避免设置这个范围内的热床温度
 - 退料前的回抽参数会自动读取使用的耗材配置,可在耗材配置内更改
 - 切片软件的冲刷体积配置也能正常生效
 - 冲刷体积一部分流量会被用于进料,请自行测试合适的冲刷体积

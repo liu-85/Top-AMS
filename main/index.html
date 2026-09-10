@@ -634,10 +634,6 @@
                         <option value="2">通道 2</option>
                         <option value="3">通道 3</option>
                         <option value="4">通道 4</option>
-                        <option value="5">通道 5</option>
-                        <option value="6">通道 6</option>
-                        <option value="7">通道 7</option>
-                        <option value="8">通道 8</option>
                     </select>
                 </div>
             </div>
@@ -724,17 +720,12 @@
             { id: 1, color: "#3498db", name: "PLA" },
             { id: 2, color: "#e74c3c", name: "PETG" },
             { id: 3, color: "#2ecc71", name: "ABS" },
-            { id: 4, color: "#f1c40f", name: "TPU" },
-            { id: 5, color: "#9b59b6", name: "PLA" },
-            { id: 6, color: "#1abc9c", name: "PETG" },
-            { id: 7, color: "#e67e22", name: "ABS" },
-            { id: 8, color: "#34495e", name: "TPU" }
+            { id: 4, color: "#f1c40f", name: "TPU" }
         ];
 
-        //生成下拉框选项
         function createOptions(selectedId) {
             let opts = "";
-            for (let i = 1; i <= 8; i++) {
+            for (let i = 1; i <= 4; i++) {
                 opts += `<option value="${i}" ${i === selectedId ? "selected" : ""}>通道 ${i}</option>`;
             }
             return opts;
