@@ -30,38 +30,48 @@ namespace mesp {
         });
 
 
+    inline bool gpio_valid(gpio_num_t IO) noexcept {
+        if (IO == GPIO_NUM_NC) return false;
+        if (IO < 0 || static_cast<size_t>(IO) >= config::MAX_GPIO) return false;
+        return true;
+    }
+
     //普通输出
     inline void gpio_out(gpio_num_t IO, bool value) {
+        if (!gpio_valid(IO)) return;
 
         if (gpio_state[IO].mode != GPIO_MODE_OUTPUT) {
             gpio_config_t io_conf = {
-                1ull << IO,// 设置要操作的接口,掩码结构
-                GPIO_MODE_OUTPUT,// 设置是输入还是输出
-                GPIO_PULLUP_DISABLE,//开关上拉
-                GPIO_PULLDOWN_DISABLE,//开关下拉
-                GPIO_INTR_DISABLE// 开关中断
+                1ull << IO,
+                GPIO_MODE_OUTPUT,
+                GPIO_PULLDOWN_ENABLE,
+                GPIO_PULLDOWN_DISABLE,
+                GPIO_INTR_DISABLE
             };
             gpio_config(&io_conf);
+            gpio_set_level(IO, 0);
         }
 
-        gpio_set_level(IO, value);
-        // fpr(IO,' ',value);
+        gpio_set_level(IO, value ? 1 : 0);
     }//gpio_out
 
     //开漏输出
     inline void gpio_out_OD(gpio_num_t IO, bool value) {
+        if (!gpio_valid(IO)) return;
+
         if (gpio_state[IO].mode != GPIO_MODE_OUTPUT_OD) {
             gpio_config_t io_conf = {
-                1ull << IO,// 设置要操作的接口,掩码结构
-                GPIO_MODE_OUTPUT_OD,// 设置是输入还是输出
-                GPIO_PULLUP_DISABLE,//开关上拉
-                GPIO_PULLDOWN_DISABLE,//开关下拉
-                GPIO_INTR_DISABLE// 开关中断
+                1ull << IO,
+                GPIO_MODE_OUTPUT_OD,
+                GPIO_PULLUP_DISABLE,
+                GPIO_PULLDOWN_DISABLE,
+                GPIO_INTR_DISABLE
             };
             gpio_config(&io_conf);
+            gpio_set_level(IO, 0);
         }
 
-        gpio_set_level(IO, value);
+        gpio_set_level(IO, value ? 1 : 0);
     }//gpio_out_OD
 
 
@@ -77,26 +87,19 @@ namespace mesp {
         xQueueSendFromISR(gpio_channle, &in, NULL);
     }
 
-    inline void gpio_set_in(gpio_num_t IO) {//未来如果有别的需求可以抽象一下,只改中断触发方式
-        // static_assert(IO != 9, "BOOT");//?上电前不能下拉，ESP32会进入下载模式
-        // static_assert(IO != 11, "11");//GPIO11默认为SPI flash的VDD引脚，需要配置后才能作为GPIO使用
-        if (IO == gpio_num_t::GPIO_NUM_NC)
-            return;
-
+    inline void gpio_set_in(gpio_num_t IO) {
+        if (!gpio_valid(IO)) return;
 
         uint64_t pin_mask = 1ull << IO;
         gpio_config_t io_conf = {
             pin_mask,
             GPIO_MODE_INPUT,
-            GPIO_PULLUP_ENABLE,//开上拉
+            GPIO_PULLUP_ENABLE,
             GPIO_PULLDOWN_DISABLE,
-            // GPIO_INTR_NEGEDGE//下降沿触发
-            // GPIO_INTR_LOW_LEVEL//低电平触发
-            GPIO_INTR_ANYEDGE//上下边沿触发
+            GPIO_INTR_ANYEDGE
         };
         gpio_config(&io_conf);
         gpio_set_intr_type(IO, GPIO_INTR_ANYEDGE);
-
 
         gpio_isr_handler_add(IO, __gpio_isr_handler, (void*)IO);
     }//gpio_set_in

@@ -425,11 +425,33 @@ namespace topams {
 extern "C" void app_main(void) {
     using namespace mesp;
 
+    {
+        const gpio_num_t pins[] = {
+            topams::main_motor.in1,
+            topams::main_motor.in2,
+            topams::channels[0].solenoid,
+            topams::channels[1].solenoid,
+            topams::channels[2].solenoid,
+            topams::channels[3].solenoid
+        };
+        for (auto IO : pins) {
+            if (IO == GPIO_NUM_NC) continue;
+            gpio_config_t io_conf = {
+                (1ULL << IO),
+                GPIO_MODE_OUTPUT,
+                GPIO_PULLDOWN_ENABLE,
+                GPIO_PULLDOWN_DISABLE,
+                GPIO_INTR_DISABLE
+            };
+            gpio_config(&io_conf);
+            gpio_set_level(IO, 0);
+        }
+    }
+
     ws_command_init();
 
     fpr("main函数开始");
     fpr("wsValue数量:", wsValue_state.map.size());
-
 
     mesp::gpio_out(topams::main_motor.in1, false);
     mesp::gpio_out(topams::main_motor.in2, false);

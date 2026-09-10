@@ -9,12 +9,15 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+env:
+  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repo
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Get current date
       id: date
@@ -29,27 +32,102 @@ jobs:
           pip install pyyaml jinja2
           idf.py build
 
-    - name: Copy firmware files
+    - name: Verify build files and prepare output
       run: |
+        set -e
         mkdir -p output
+        echo "=== Checking build output ==="
+        ls -la build/ || true
+        ls -la build/bootloader/ || true
+        ls -la build/partition_table/ || true
+
+        test -f build/bootloader/bootloader.bin || { echo "ERROR: bootloader.bin not found"; exit 1; }
+        test -f build/partition_table/partition-table.bin || { echo "ERROR: partition-table.bin not found"; exit 1; }
+        test -f build/Top-AMS.bin || { echo "ERROR: Top-AMS.bin not found"; exit 1; }
+        test -f build/flash_args || { echo "ERROR: flash_args not found"; exit 1; }
+
         cp build/bootloader/bootloader.bin output/
         cp build/partition_table/partition-table.bin output/
         cp build/Top-AMS.bin output/
         cp build/flash_args output/
+
+        echo ""
         echo "=== flash_args ==="
         cat output/flash_args
+        echo ""
+        echo "=== Final output files ==="
+        ls -la output/
+        echo "TOTAL:" $(du -sh output/ | cut -f1)
 
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: Top-AMS-firmware-${{ env.DATE }}
         path: output/
+        retention-days: 90
+        if-no-files-found: error
 
-    - name: Create Release
+    - name: Create / Update Latest Pre-release (push main only)
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: latest
+        name: Latest CI Build - ${{ env.DATE }}
+        prerelease: true
+        files: output/*
+        generate_release_notes: true
+        make_latest: true
+        body: |
+          ## 最新开发版固件 (自动构建)
+
+          构建时间: ${{ env.DATE }}
+          提交: ${{ github.sha }}
+
+          本版本为 GitHub Actions 自动编译的最新主分支版本，包含最新功能和修复。
+
+          ### 固件文件说明
+          - `bootloader.bin` (0x0) - 引导加载程序
+          - `partition-table.bin` (0x8000) - 分区表
+          - `Top-AMS.bin` (0x10000) - 主程序固件
+          - `flash_args` - 烧录参数参考
+
+          ### 烧录命令参考
+          ```bash
+          esptool.py --chip esp32c3 --before default_reset --after hard_reset write_flash \
+            --flash_mode dio --flash_freq 80m --flash_size 4MB \
+            0x0 bootloader.bin \
+            0x8000 partition-table.bin \
+            0x10000 Top-AMS.bin
+          ```
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Create Tagged Release (tag v* only)
       if: startsWith(github.ref, 'refs/tags/v')
       uses: softprops/action-gh-release@v2
       with:
         files: output/*
         generate_release_notes: true
+        fail_on_unmatched_files: true
+        body: |
+          ## 正式发布版本 ${{ github.ref_name }}
+
+          构建时间: ${{ env.DATE }}
+          提交: ${{ github.sha }}
+
+          ### 固件文件说明
+          - `bootloader.bin` (0x0) - 引导加载程序
+          - `partition-table.bin` (0x8000) - 分区表
+          - `Top-AMS.bin` (0x10000) - 主程序固件
+          - `flash_args` - 烧录参数参考
+
+          ### 烧录命令参考
+          ```bash
+          esptool.py --chip esp32c3 --before default_reset --after hard_reset write_flash \
+            --flash_mode dio --flash_freq 80m --flash_size 4MB \
+            0x0 bootloader.bin \
+            0x8000 partition-table.bin \
+            0x10000 Top-AMS.bin
+          ```
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
