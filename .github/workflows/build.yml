@@ -9,6 +9,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 env:
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
@@ -29,10 +32,10 @@ jobs:
         esp_idf_version: v5.5.2
         target: esp32c3
         command: |
-          pip install pyyaml jinja2
+          pip install pyyaml jinja2 esptool
           idf.py build
 
-    - name: Verify build files and prepare output
+    - name: Merge BINs into single flash image and prepare output
       run: |
         set -e
         mkdir -p output
@@ -46,18 +49,41 @@ jobs:
         test -f build/Top-AMS.bin || { echo "ERROR: Top-AMS.bin not found"; exit 1; }
         test -f build/flash_args || { echo "ERROR: flash_args not found"; exit 1; }
 
+        echo ""
+        echo "=== flash_args ==="
+        cat build/flash_args
+        echo ""
+
+        FLASH_MODE=$(grep -oP 'flash_mode \K\w+' build/flash_args || echo "dio")
+        FLASH_FREQ=$(grep -oP 'flash_freq \K\w+' build/flash_args || echo "80m")
+        FLASH_SIZE=$(grep -oP 'flash_size \K\w+' build/flash_args || echo "4MB")
+        echo "Flash params: mode=$FLASH_MODE freq=$FLASH_FREQ size=$FLASH_SIZE"
+
+        echo ""
+        echo "=== Merging to single BIN ==="
+        python -m esptool \
+          --chip esp32c3 \
+          merge_bin \
+          -o output/Top-AMS-full.bin \
+          --flash_mode "$FLASH_MODE" \
+          --flash_freq "$FLASH_FREQ" \
+          --flash_size "$FLASH_SIZE" \
+          0x0 build/bootloader/bootloader.bin \
+          0x8000 build/partition_table/partition-table.bin \
+          0x10000 build/Top-AMS.bin
+
         cp build/bootloader/bootloader.bin output/
         cp build/partition_table/partition-table.bin output/
         cp build/Top-AMS.bin output/
         cp build/flash_args output/
 
         echo ""
-        echo "=== flash_args ==="
-        cat output/flash_args
-        echo ""
         echo "=== Final output files ==="
         ls -la output/
         echo "TOTAL:" $(du -sh output/ | cut -f1)
+        echo ""
+        echo "Single flash write command (0x0 only):"
+        echo "esptool.py --chip esp32c3 write_flash 0x0 Top-AMS-full.bin"
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v5
@@ -77,6 +103,7 @@ jobs:
         files: output/*
         generate_release_notes: true
         make_latest: true
+        overwrite: true
         body: |
           ## 最新开发版固件 (自动构建)
 
@@ -86,12 +113,21 @@ jobs:
           本版本为 GitHub Actions 自动编译的最新主分支版本，包含最新功能和修复。
 
           ### 固件文件说明
-          - `bootloader.bin` (0x0) - 引导加载程序
-          - `partition-table.bin` (0x8000) - 分区表
-          - `Top-AMS.bin` (0x10000) - 主程序固件
-          - `flash_args` - 烧录参数参考
+          | 文件 | 说明 | 刷写地址 |
+          |------|------|----------|
+          | **Top-AMS-full.bin** | **推荐！单文件一键刷写** | 0x0 |
+          | `bootloader.bin` | 引导加载程序 (拆分版) | 0x0 |
+          | `partition-table.bin` | 分区表 (拆分版) | 0x8000 |
+          | `Top-AMS.bin` | 主程序固件 (拆分版) | 0x10000 |
+          | `flash_args` | 烧录参数参考 | - |
 
-          ### 烧录命令参考
+          ### 🔥 推荐：一键单文件刷写
+          ```bash
+          esptool.py --chip esp32c3 --before default_reset --after hard_reset \
+            write_flash 0x0 Top-AMS-full.bin
+          ```
+
+          ### 拆分版刷写 (需要3个文件)
           ```bash
           esptool.py --chip esp32c3 --before default_reset --after hard_reset write_flash \
             --flash_mode dio --flash_freq 80m --flash_size 4MB \
@@ -116,12 +152,21 @@ jobs:
           提交: ${{ github.sha }}
 
           ### 固件文件说明
-          - `bootloader.bin` (0x0) - 引导加载程序
-          - `partition-table.bin` (0x8000) - 分区表
-          - `Top-AMS.bin` (0x10000) - 主程序固件
-          - `flash_args` - 烧录参数参考
+          | 文件 | 说明 | 刷写地址 |
+          |------|------|----------|
+          | **Top-AMS-full.bin** | **推荐！单文件一键刷写** | 0x0 |
+          | `bootloader.bin` | 引导加载程序 (拆分版) | 0x0 |
+          | `partition-table.bin` | 分区表 (拆分版) | 0x8000 |
+          | `Top-AMS.bin` | 主程序固件 (拆分版) | 0x10000 |
+          | `flash_args` | 烧录参数参考 | - |
 
-          ### 烧录命令参考
+          ### 🔥 推荐：一键单文件刷写
+          ```bash
+          esptool.py --chip esp32c3 --before default_reset --after hard_reset \
+            write_flash 0x0 Top-AMS-full.bin
+          ```
+
+          ### 拆分版刷写 (需要3个文件)
           ```bash
           esptool.py --chip esp32c3 --before default_reset --after hard_reset write_flash \
             --flash_mode dio --flash_freq 80m --flash_size 4MB \

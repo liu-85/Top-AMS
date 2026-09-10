@@ -44,7 +44,27 @@
 - 机械结构设计需保证:离合吸合时通道料轮与主电机轴可靠连接,释放时完全断开
 
 ### 刷入固件
+- [固件下载地址](https://github.com/liu-85/Top-AMS/releases/tag/latest) (GitHub Actions 自动构建最新版本)
 - [固件刷入教程](https://docs.espressif.com/projects/esp-techpedia/zh_CN/latest/esp-friends/get-started/try-firmware/try-firmware-platform.html#esp-launchpad)
+
+#### 推荐: 单文件一键刷写
+下载 Releases 中的 **`Top-AMS-full.bin`**，执行：
+```bash
+esptool.py --chip esp32c3 --before default_reset --after hard_reset \
+  write_flash 0x0 Top-AMS-full.bin
+```
+> 单文件已包含 bootloader + 分区表 + 主程序，无需关心地址偏移。
+
+#### 拆分版刷写 (3个文件)
+如下载了拆分的独立文件：
+```bash
+esptool.py --chip esp32c3 --before default_reset --after hard_reset write_flash \
+  --flash_mode dio --flash_freq 80m --flash_size 4MB \
+  0x0 bootloader.bin \
+  0x8000 partition-table.bin \
+  0x10000 Top-AMS.bin
+```
+
 - 固件刷完要重启
 ### esp配网
 - 使用微信小程序 **一键配网**
