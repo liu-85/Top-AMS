@@ -384,12 +384,12 @@ namespace mesp {
         void connected() {
             size_t cnt = 0;
 
-            if (Wifi_ssid.get_value() == "") {
+            if (strlen(Wifi_ssid.get_value().c_str()) == 0) {
                 start_ap_mode();
             } else {
                 WiFi.mode(WIFI_AP_STA);
                 WiFi.softAP("Top-AMS-Config", "12345678");
-                WiFi.begin(Wifi_ssid.get_value().get().c_str(), Wifi_pass.get_value().get().c_str());
+                WiFi.begin(Wifi_ssid.get_value().c_str(), Wifi_pass.get_value().c_str());
             }
 
             // 等待WiFi连接到路由器
