@@ -548,6 +548,7 @@
             <button class="tab-btn active" onclick="showTab('config-panel')"><i class="fas fa-wifi"></i> 网络配置</button>
             <button class="tab-btn" onclick="showTab('main-panel')"><i class="fas fa-tachometer-alt"></i> 主控制台</button>
             <button class="tab-btn" onclick="showTab('channel-panel')"><i class="fas fa-fill-drip"></i> 通道管理</button>
+            <button class="tab-btn" onclick="showTab('ota-panel')"><i class="fas fa-download"></i> 固件更新</button>
         </div>
 
         <!-- 网络配置面板 -->
@@ -683,6 +684,55 @@
             </div>
 
         </div>
+
+        <!-- 固件更新面板 -->
+        <div id="ota-panel" class="panel-content hidden">
+            <div class="section-title"><i class="fas fa-cloud-download-alt"></i> 在线更新固件</div>
+            <div class="help-text" style="margin-bottom:16px;">通过输入固件文件 URL 直接从服务器下载并更新，例如 GitHub Release 链接</div>
+
+            <div class="input-grid">
+                <div class="input-group">
+                    <label for="ota_url">固件文件地址 (BIN)</label>
+                    <input type="text" id="ota_url" placeholder="https://github.com/liu-85/Top-AMS/releases/download/latest/Top-AMS-full.bin"
+                        value="https://github.com/liu-85/Top-AMS/releases/download/latest/Top-AMS-full.bin">
+                    <div class="help-text">支持 HTTP/HTTPS 链接，需确保 ESP32 能访问该地址</div>
+                </div>
+            </div>
+
+            <div class="action-buttons">
+                <button class="action-btn success" onclick="updateFromUrl()">
+                    <i class="fas fa-download"></i> 从 URL 下载并更新
+                </button>
+            </div>
+
+            <div class="section-title"><i class="fas fa-upload"></i> 本地上传固件</div>
+            <div class="help-text" style="margin-bottom:16px;">选择本地的 BIN 固件文件进行上传更新（推荐使用 Top-AMS-full.bin 合并固件）</div>
+
+            <div class="input-grid">
+                <div class="input-group">
+                    <label for="ota_file">选择固件文件 (.bin)</label>
+                    <input type="file" id="ota_file" accept=".bin" style="padding:8px;border:2px dashed #ccc;border-radius:8px;background:#fafafa;">
+                    <div class="help-text" id="ota_file_info">请选择 .bin 文件</div>
+                </div>
+            </div>
+
+            <div class="action-buttons">
+                <button class="action-btn" onclick="uploadFirmware()">
+                    <i class="fas fa-upload"></i> 上传并更新固件
+                </button>
+            </div>
+
+            <div class="section-title"><i class="fas fa-info-circle"></i> 更新说明</div>
+            <div style="background:#f8f9fa;padding:16px;border-radius:8px;color:#555;font-size:14px;line-height:1.8;">
+                <div>⚠️ <b>注意事项：</b></div>
+                <div>1. 更新过程中<b>切勿断电</b>，否则可能导致设备无法启动</div>
+                <div>2. 请确保使用正确的固件文件 (.bin 格式)</div>
+                <div>3. 更新完成后设备会自动重启</div>
+                <div>4. 可在「主控制台」的系统日志中查看更新进度</div>
+                <div>5. 建议使用合并固件 Top-AMS-full.bin，可直接在 Flash 0 地址烧录</div>
+            </div>
+        </div>
+
         <style>
             @media (max-width: 768px) {
                 .channel-table-container {
@@ -909,7 +959,99 @@
             document.getElementById('main-panel').classList.add('hidden');
             document.getElementById('config-panel').classList.add('hidden');
             document.getElementById('channel-panel').classList.add('hidden');
+            document.getElementById('ota-panel').classList.add('hidden');
             document.getElementById(tabId).classList.remove('hidden');
+        }
+
+        // 从 URL 进行 OTA 更新
+        function updateFromUrl() {
+            const url = document.getElementById('ota_url').value.trim();
+            if (!url) {
+                log('请输入固件文件地址', 'error');
+                return;
+            }
+            if (!url.toLowerCase().endsWith('.bin') && !url.includes('download')) {
+                if (!confirm('URL 似乎不是 .bin 文件，确定要继续吗？')) {
+                    return;
+                }
+            }
+            if (confirm('确定要从 URL 下载并更新固件吗？\n更新过程中切勿断电！')) {
+                log('开始从 URL 下载固件: ' + url, 'info');
+                showTab('main-panel');
+                // 通过 WebSocket 发送 URL 字符串，使用 sendKeyValue 机制或直接自定义 action
+                const doc = {
+                    action: {
+                        command: 'ota_url',
+                        value: url
+                    }
+                };
+                ws.send(JSON.stringify(doc));
+                log(`发送命令: ota_url (value: ${url})`, 'info');
+            }
+        }
+
+        // 上传本地固件文件
+        function uploadFirmware() {
+            const fileInput = document.getElementById('ota_file');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                log('请先选择固件文件', 'error');
+                return;
+            }
+
+            if (!file.name.toLowerCase().endsWith('.bin')) {
+                if (!confirm('所选文件不是 .bin 格式，确定要继续吗？')) {
+                    return;
+                }
+            }
+
+            if (!confirm(`确定要上传固件 "${file.name}" 吗？\n文件大小: ${(file.size / 1024).toFixed(1)} KB\n更新过程中切勿断电！`)) {
+                return;
+            }
+
+            showTab('main-panel');
+            log('开始上传固件: ' + file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)', 'info');
+
+            const xhr = new XMLHttpRequest();
+            const formData = new FormData();
+            formData.append('file', file, file.name);
+
+            xhr.open('POST', '/update', true);
+
+            xhr.upload.onprogress = function(e) {
+                if (e.lengthComputable) {
+                    const pct = Math.round((e.loaded / e.total) * 100);
+                    log(`上传进度: ${pct}% (${(e.loaded / 1024).toFixed(1)}/${(e.total / 1024).toFixed(1)} KB)`, 'info');
+                }
+            };
+
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    try {
+                        const data = JSON.parse(xhr.responseText);
+                        if (data.success) {
+                            log('固件上传成功！设备将在几秒后自动重启...', 'success');
+                        } else {
+                            log('固件上传失败: ' + (data.message || '未知错误'), 'error');
+                        }
+                    } catch (e) {
+                        log('固件上传完成，等待设备重启...', 'success');
+                    }
+                } else {
+                    log('上传失败: HTTP ' + xhr.status, 'error');
+                }
+            };
+
+            xhr.onerror = function() {
+                log('上传失败：网络错误或连接中断', 'error');
+            };
+
+            xhr.onabort = function() {
+                log('上传已取消', 'warning');
+            };
+
+            xhr.send(formData);
         }
 
         // WiFi保存并重启连接
@@ -992,6 +1134,22 @@
             espDot.classList.add('disconnected');
             // mqttDot.classList.add('disconnected');
             log('AMS控制台已加载', 'success');
+
+            // OTA 文件选择监听
+            const fileInput = document.getElementById('ota_file');
+            const fileInfo = document.getElementById('ota_file_info');
+            if (fileInput && fileInfo) {
+                fileInput.addEventListener('change', function () {
+                    const file = this.files[0];
+                    if (file) {
+                        fileInfo.textContent = `已选择: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+                        fileInfo.style.color = '#27ae60';
+                    } else {
+                        fileInfo.textContent = '请选择 .bin 文件';
+                        fileInfo.style.color = '';
+                    }
+                });
+            }
         });
 
 

@@ -1,6 +1,8 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <ESPAsyncWebServer.h>
+#include <HTTPClient.h>
+#include <Update.h>
 
 // #undef F
 
@@ -46,6 +48,113 @@ inline void state_event(const Exstring<128>& msg) {}
 
 using async_work_type = std::function<void()>;
 inline mesp::channel_lock<async_work_type> async_channel;
+
+inline bool ota_in_progress = false;
+
+    inline void ota_perform_from_stream(Stream& stream, size_t total_size) {
+        ota_in_progress = true;
+        bool success = false;
+        size_t written = 0;
+        size_t last_progress = 0;
+
+        webfpr("开始OTA更新,总大小:" + Exstring(total_size));
+
+        if (!Update.begin(total_size, U_FLASH)) {
+            Exstring<128> err("OTA begin失败,错误:" + Exstring(Update.getError()));
+            webfpr(err);
+            Update.end(false);
+            ota_in_progress = false;
+            return;
+        }
+
+        uint8_t buf[4096];
+        size_t remaining = total_size;
+
+        while (remaining > 0) {
+            size_t to_read = sizeof(buf);
+            if (to_read > remaining) to_read = remaining;
+
+            int got = stream.readBytes(buf, to_read);
+            if (got <= 0) {
+                webfpr("OTA读取数据中断");
+                break;
+            }
+
+            size_t wrote = Update.write(buf, got);
+            if (wrote != got) {
+                Exstring<128> err("OTA写入失败,已写:" + Exstring(wrote) + "期望:" + Exstring(got) + "错误:" + Exstring(Update.getError()));
+                webfpr(err);
+                break;
+            }
+
+            written += wrote;
+            remaining -= wrote;
+
+            size_t progress = (written * 100) / total_size;
+            if (progress >= last_progress + 10 || progress == 100) {
+                last_progress = progress;
+                webfpr("OTA进度:" + Exstring(progress) + "% (" + Exstring(written) + "/" + Exstring(total_size) + ")");
+            }
+        }
+
+        if (remaining == 0 && Update.end(true)) {
+            webfpr("OTA写入成功,准备重启...");
+            success = true;
+        } else {
+            Exstring<128> err("OTA失败,剩余:" + Exstring(remaining) + "错误:" + Exstring(Update.getError()));
+            webfpr(err);
+            Update.end(false);
+        }
+
+        ota_in_progress = false;
+
+        if (success) {
+            mstd::delay(2s);
+            ESP.restart();
+        }
+    }
+
+    inline void ota_from_url(const Exstring<512>& url) {
+        if (ota_in_progress) {
+            webfpr("OTA正在进行中,请稍后再试");
+            return;
+        }
+
+        if (WiFi.status() != WL_CONNECTED) {
+            webfpr("WiFi未连接,无法下载固件");
+            return;
+        }
+
+        webfpr("开始从URL下载固件:" + url);
+
+        HTTPClient http;
+        http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+        http.setRedirectLimit(10);
+
+        if (!http.begin(url.c_str())) {
+            webfpr("HTTP客户端初始化失败");
+            return;
+        }
+
+        int httpCode = http.GET();
+        if (httpCode != HTTP_CODE_OK) {
+            Exstring<128> err("HTTP请求失败,状态码:" + Exstring(httpCode));
+            webfpr(err);
+            http.end();
+            return;
+        }
+
+        int total_size = http.getSize();
+        if (total_size <= 0) {
+            webfpr("无法获取固件大小,Content-Length缺失");
+            http.end();
+            return;
+        }
+
+        WiFiClient* stream = http.getStreamPtr();
+        ota_perform_from_stream(*stream, (size_t)total_size);
+        http.end();
+    }
 
 namespace topams {
 
@@ -401,6 +510,12 @@ namespace topams {
                 mstd::delay(3s);
                 ESP.restart();
             }>("wifi_reset");
+
+            mesp::command_emplace<+[](Exstring<512> url) {
+                async_channel.emplace([url]() {
+                    ota_from_url(url);
+                });
+            }>("ota_url");
         });
 
 
@@ -520,6 +635,61 @@ extern "C" void app_main(void) {
             // request->send(200, "text/html", web.c_str());
             request->send(200, "text/html", web.data());
         });
+
+        server.on("/update", HTTP_POST,
+            [](AsyncWebServerRequest* request) {
+                AsyncWebServerResponse* response;
+                if (Update.hasError()) {
+                    Exstring<128> err("OTA更新失败,错误:" + Exstring(Update.getError()));
+                    webfpr(err);
+                    response = request->beginResponse(500, "application/json",
+                        "{\"success\":false,\"message\":\"OTA更新失败\"}");
+                } else {
+                    webfpr("固件上传完成,准备重启...");
+                    response = request->beginResponse(200, "application/json",
+                        "{\"success\":true,\"message\":\"固件上传成功,即将重启\"}");
+                }
+                request->send(response);
+                if (!Update.hasError()) {
+                    mstd::delay(2s);
+                    ESP.restart();
+                }
+            },
+            [](AsyncWebServerRequest* request, const String& filename, size_t index, uint8_t* data, size_t len, bool final) {
+                if (!index) {
+                    fpr("OTA文件上传开始,文件名:", filename.c_str());
+                    webfpr("开始OTA文件上传,文件名:" + Exstring(filename.c_str()));
+                    ota_in_progress = true;
+                    size_t uploadSize = request->contentLength();
+                    if (!Update.begin(uploadSize, U_FLASH)) {
+                        Exstring<128> err("OTA begin失败,错误:" + Exstring(Update.getError()));
+                        webfpr(err);
+                        Update.end(false);
+                        ota_in_progress = false;
+                        return;
+                    }
+                    webfpr("固件大小:" + Exstring(uploadSize));
+                }
+                if (len) {
+                    size_t written = Update.write(data, len);
+                    if (written != len) {
+                        Exstring<128> err("OTA写入失败,已写:" + Exstring(written) + "期望:" + Exstring(len));
+                        webfpr(err);
+                    }
+                }
+                if (final) {
+                    if (Update.end(true)) {
+                        webfpr("OTA写入完成");
+                        ota_in_progress = false;
+                    } else {
+                        Exstring<128> err("OTA结束失败,错误:" + Exstring(Update.getError()));
+                        webfpr(err);
+                        Update.end(false);
+                        ota_in_progress = false;
+                    }
+                }
+            }
+        );
 
         server.addHandler(&ws);
 
