@@ -266,7 +266,7 @@ namespace topams {
                 } while (hw_switch != 1);
 
 
-                extruder = new_extruder;
+                extruder.set_value(new_extruder);
 
 
                 mqttclient.publish(
@@ -323,7 +323,10 @@ namespace topams {
                     int32_t old_extruder = extruder.get_value();
                     int32_t new_extruder = bed_target_temper;
                     if (old_extruder == 0) {
-                        webfpr("当前通道未知,本次请手动进退料,之后设置好新料为当前通道");
+                        webfpr("当前通道未知或为首次换料,将目标通道记为当前通道,请手动进退料确保耗材正确,之后点击恢复继续打印");
+                        extruder.set_value(new_extruder);
+                        if (bed_target_temper_max > 0)
+                            client.publish(bambu::msg::runGcode("M190 S" + mstd::Exstring(bed_target_temper_max)));
                     } else if (old_extruder != new_extruder) {
                         mstd::fpr("唤醒换料程序");
                         pause_lock = true;
