@@ -380,94 +380,16 @@ namespace mesp {
             }
         }
 
-        void start_ap_mode() {
-            WiFi.mode(WIFI_AP_STA);
-            WiFi.softAP("Top-AMS-Config", "12345678");
-
-            IPAddress apIP = WiFi.softAPIP();
-            fpr("AP模式已启动");
-            fpr("AP SSID: Top-AMS-Config");
-            fpr("AP Password: 12345678");
-            fpr("AP IP Address: ", (int)apIP[0], ".", (int)apIP[1], ".", (int)apIP[2], ".", (int)apIP[3]);
-
-            static AsyncWebServer ap_server(80);
-
-            ap_server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
-                request->send(200, "text/html", ap_config_html::PAGE);
-            });
-
-            ap_server.on("/scan", HTTP_GET, [](AsyncWebServerRequest* request) {
-                int n = WiFi.scanNetworks(false, true);
-                String json = "[";
-                for (int i = 0; i < n; ++i) {
-                    if (i > 0) json += ",";
-                    String ssid = WiFi.SSID(i);
-                    ssid.replace("\"", "\\\"");
-                    json += "{\"ssid\":\"" + ssid + "\",\"rssi\":" + String(WiFi.RSSI(i)) + "}";
-                }
-                json += "]";
-                request->send(200, "application/json", json);
-            });
-
-            ap_server.on(
-                "/connect",
-                HTTP_POST,
-                [this](AsyncWebServerRequest* request) {
-                    request->send(200, "application/json", "{\"success\":true}");
-                    mstd::delay(3s);
-                    WiFi.softAPdisconnect(true);
-                    ESP.restart();
-                },
-                nullptr,
-                [this](AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, size_t total) {
-                    if (index == 0 && len > 0) {
-                        StaticJsonDocument<512> doc;
-                        DeserializationError err = deserializeJson(doc, data, len);
-                        if (err) {
-                            return;
-                        }
-                        const char* ssid = doc["ssid"] | "";
-                        const char* password = doc["password"] | "";
-                        if (strlen(ssid) == 0) {
-                            return;
-                        }
-                        this->Wifi_ssid = ssid;
-                        this->Wifi_pass = password;
-                    }
-                }
-            );
-
-            ap_server.begin();
-            fpr("AP配网服务器已启动,请连接WiFi后访问 http://192.168.4.1");
-
-            size_t cnt = 0;
-            while (true) {
-                gpio_out(config::WIFI_LED, cnt % 2);
-                ++cnt;
-                mstd::delay(500ms);
-            }
-        }
-
         //连接,阻塞
         void connected() {
             size_t cnt = 0;
 
-            if (Wifi_ssid == "") {
-                WiFi.mode(WIFI_AP_STA);
-                WiFi.beginSmartConfig();
-
-                while (!WiFi.smartConfigDone()) {
-                    gpio_out(config::WIFI_LED, cnt % 2);//慢闪,等待配网
-                    ++cnt;
-                    fpr("Waiting for SmartConfig");
-                    mstd::delay(1000ms);
-                }
-
-                Wifi_ssid = WiFi.SSID().c_str();
-                Wifi_pass = WiFi.psk().c_str();
-
+            if (Wifi_ssid.get_value() == "") {
+                start_ap_mode();
             } else {
-                WiFi.begin(Wifi_ssid.get().c_str(), Wifi_pass.get().c_str());
+                WiFi.mode(WIFI_AP_STA);
+                WiFi.softAP("Top-AMS-Config", "12345678");
+                WiFi.begin(Wifi_ssid.get_value().get().c_str(), Wifi_pass.get_value().get().c_str());
             }
 
             // 等待WiFi连接到路由器
