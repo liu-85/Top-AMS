@@ -35,10 +35,19 @@ jobs:
           pip install pyyaml jinja2 esptool
           idf.py build
 
+    - name: Setup Python + esptool for host runner
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install esptool on host
+      run: pip install --upgrade esptool
+
     - name: Merge BINs into single flash image and prepare output
       run: |
         set -e
         mkdir -p output
+
         echo "=== Checking build output ==="
         ls -la build/ || true
         ls -la build/bootloader/ || true
@@ -54,9 +63,18 @@ jobs:
         cat build/flash_args
         echo ""
 
-        FLASH_MODE=$(grep -oP 'flash_mode \K\w+' build/flash_args || echo "dio")
-        FLASH_FREQ=$(grep -oP 'flash_freq \K\w+' build/flash_args || echo "80m")
-        FLASH_SIZE=$(grep -oP 'flash_size \K\w+' build/flash_args || echo "4MB")
+        FLASH_MODE="dio"
+        FLASH_FREQ="80m"
+        FLASH_SIZE="4MB"
+        line1=$(sed -n '1p' build/flash_args)
+        echo "Parsed line: $line1"
+        for tok in $line1; do
+          case "$tok" in
+            dio|qio|dout|qout) FLASH_MODE="$tok" ;;
+            80m|40m|26m|20m)  FLASH_FREQ="$tok" ;;
+            1MB|2MB|4MB|8MB|16MB|32MB|64MB|128MB) FLASH_SIZE="$tok" ;;
+          esac
+        done
         echo "Flash params: mode=$FLASH_MODE freq=$FLASH_FREQ size=$FLASH_SIZE"
 
         echo ""
