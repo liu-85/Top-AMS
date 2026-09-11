@@ -1,6 +1,16 @@
 idf_component_register(SRCS "main.cpp"
                     INCLUDE_DIRS ""
-                    REQUIRES espressif__arduino-esp32)
+                    PRIV_REQUIRES
+                        nvs_flash
+                        driver
+                        esp_wifi
+                        esp_http_client
+                        esp_https_ota
+                        app_update
+                        mqtt
+                        espressif__arduino-esp32
+                        esp32async__espasyncwebserver
+                        bblanchon__arduinojson)
 
 
 # 添加自定义目标执行Python脚本
