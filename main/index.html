@@ -552,6 +552,29 @@
 
         <!-- 网络配置面板 -->
         <div id="config-panel" class="panel-content">
+            <div class="section-title"><i class="fas fa-wifi"></i> WiFi 联网设置</div>
+            <div class="help-text" style="margin-bottom:16px;">连接路由器后可以通过局域网IP访问，同时也会保持AP热点(Top-AMS-Config)供APP直连</div>
+
+            <div class="input-grid">
+                <div class="input-group">
+                    <label for="Wifi_ssid">路由器 WiFi 名称 (SSID)</label>
+                    <input type="text" id="Wifi_ssid" placeholder="请输入路由器WiFi名称" onchange="sendKeyValue('Wifi_ssid', this.value)">
+                </div>
+                <div class="input-group">
+                    <label for="Wifi_pass">路由器 WiFi 密码</label>
+                    <input type="password" id="Wifi_pass" placeholder="请输入WiFi密码（无密码留空）" onchange="sendKeyValue('Wifi_pass', this.value)">
+                </div>
+            </div>
+
+            <div class="action-buttons">
+                <button class="action-btn" onclick="wifiSaveRestart()">
+                    <i class="fas fa-save"></i> 保存并重启连接
+                </button>
+                <button class="action-btn danger" onclick="wifiReset()">
+                    <i class="fas fa-redo"></i> 清空WiFi配置
+                </button>
+            </div>
+
             <div class="section-title"><i class="fas fa-print"></i> 打印机连接设置</div>
 
             <div class="input-grid">
@@ -887,6 +910,25 @@
             document.getElementById('config-panel').classList.add('hidden');
             document.getElementById('channel-panel').classList.add('hidden');
             document.getElementById(tabId).classList.remove('hidden');
+        }
+
+        // WiFi保存并重启连接
+        function wifiSaveRestart() {
+            const ssid = document.getElementById('Wifi_ssid').value.trim();
+            if (!ssid) {
+                log('请填写WiFi名称', 'error');
+                return;
+            }
+            log('WiFi配置已保存，正在重启设备...', 'info');
+            sendCommand('wifi_save_restart', 0);
+        }
+
+        // 清空WiFi配置
+        function wifiReset() {
+            if (confirm('确定要清空WiFi配置吗？\n清空后需要重新在AP配网页面设置WiFi。')) {
+                log('正在清空WiFi配置并重启...', 'warning');
+                sendCommand('wifi_reset', 0);
+            }
         }
 
         // 发送MQTT参数

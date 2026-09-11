@@ -358,6 +358,8 @@ namespace topams {
 
 
 
+    inline mesp::smartWIFI* g_wifi = nullptr;
+
     //注册command命令
     inline mstd::call_once register_command(
         []() {
@@ -381,6 +383,21 @@ namespace topams {
                     mqtt_config::client(),
                     mqtt_config::passward());
             }>("MQTT_connect");
+
+            mesp::command_emplace<+[]() {
+                webfpr("WiFi配置已保存,3秒后重启...");
+                mstd::delay(3s);
+                ESP.restart();
+            }>("wifi_save_restart");
+
+            mesp::command_emplace<+[]() {
+                if (g_wifi) {
+                    g_wifi->reset();
+                }
+                webfpr("WiFi配置已清空,3秒后重启进入AP模式...");
+                mstd::delay(3s);
+                ESP.restart();
+            }>("wifi_reset");
         });
 
 
@@ -472,7 +489,8 @@ extern "C" void app_main(void) {
     xTaskCreate(topams::Task1, "Task1", 2048, NULL, 1, &topams::Task1_handle);//微动任务
 
 
-    smartWIFI wifi;
+    static smartWIFI wifi;
+    topams::g_wifi = &wifi;
     // smartWIFI wifi("SSID", "PASS");//也可以先写死
     wifi.connected();
 
