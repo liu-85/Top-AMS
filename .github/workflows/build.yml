@@ -33,7 +33,17 @@ jobs:
         target: esp32c3
         command: |
           pip install pyyaml jinja2 esptool
-          idf.py build
+          idf.py build 2>&1 || {
+            echo "========= BUILD FAILED: printing detailed logs ========="
+            find build/log -type f 2>/dev/null | head -20
+            for f in build/log/idf_py_stderr_output_* build/log/idf_py_stdout_output_* build/CMakeFiles/CMakeError.log build/CMakeFiles/CMakeOutput.log; do
+              [ -f "$f" ] || continue
+              echo ""
+              echo "===== $f ====="
+              tail -n 400 "$f"
+            done
+            exit 1
+          }
 
     - name: Setup Python + esptool for host runner
       uses: actions/setup-python@v5
