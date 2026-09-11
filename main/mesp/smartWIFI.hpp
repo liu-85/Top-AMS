@@ -387,7 +387,8 @@ namespace mesp {
             if (Wifi_ssid == "") {
                 start_ap_mode();
             } else {
-                WiFi.mode(WIFI_STA);
+                WiFi.mode(WIFI_AP_STA);
+                WiFi.softAP("Top-AMS-Config", "12345678");
                 WiFi.begin(Wifi_ssid.get().c_str(), Wifi_pass.get().c_str());
             }
 
@@ -401,7 +402,10 @@ namespace mesp {
 
             gpio_out(config::WIFI_LED, false);//关闭,连接成功
             fpr("WiFi Connected to AP");
-            fpr("IP Address: ", (int)WiFi.localIP()[0], ".", (int)WiFi.localIP()[1], ".", (int)WiFi.localIP()[2], ".", (int)WiFi.localIP()[3]);
+            fpr("STA IP Address: ", (int)WiFi.localIP()[0], ".", (int)WiFi.localIP()[1], ".", (int)WiFi.localIP()[2], ".", (int)WiFi.localIP()[3]);
+            IPAddress apIP = WiFi.softAPIP();
+            fpr("AP IP Address: ", (int)apIP[0], ".", (int)apIP[1], ".", (int)apIP[2], ".", (int)apIP[3]);
+            fpr("AP SSID: Top-AMS-Config (始终开启,APP可直接连接)");
         }
 
         void reset() {
