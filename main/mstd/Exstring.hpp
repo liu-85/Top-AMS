@@ -102,6 +102,22 @@ namespace mstd {
     struct to_Exstring_size<uint64_t> {
         constexpr static size_t value = 21;
     };
+    template <>
+    struct to_Exstring_size<int> {
+        constexpr static size_t value = 12;
+    };
+    template <>
+    struct to_Exstring_size<unsigned int> {
+        constexpr static size_t value = 11;
+    };
+    template <>
+    struct to_Exstring_size<long> {
+        constexpr static size_t value = 21;
+    };
+    template <>
+    struct to_Exstring_size<unsigned long> {
+        constexpr static size_t value = 21;
+    };
     template <size_t N>
     struct to_Exstring_size<const char[N]> {
         constexpr static size_t value = N;
