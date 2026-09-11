@@ -8,7 +8,6 @@ idf_component_register(SRCS "main.cpp"
                         lwip
                         esp_http_client
                         esp_https_ota
-                        esp_tls
                         mbedtls
                         app_update
                         mqtt
