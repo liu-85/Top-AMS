@@ -17,3 +17,4 @@ dependencies:
   espressif/arduino-esp32: ^3.3.5
   esp32async/espasyncwebserver: ^3.9.4
   bblanchon/arduinojson: ^7.4.2
+  espressif/mbedtls: ^1.0.0
