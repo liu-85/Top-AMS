@@ -33,17 +33,34 @@ jobs:
         target: esp32c3
         command: |
           pip install pyyaml jinja2 esptool
-          idf.py build 2>&1 || {
-            echo "========= BUILD FAILED: printing detailed logs ========="
-            find build/log -type f 2>/dev/null | head -20
+          BUILD_LOG=/tmp/build.log
+          set +e
+          idf.py build >"$BUILD_LOG" 2>&1
+          RC=$?
+          set -e
+          if [ $RC -ne 0 ]; then
+            echo "========= BUILD FAILED (rc=$RC) ========="
+            echo ""
+            echo "--- tail -800 of build log ---"
+            tail -n 800 "$BUILD_LOG" || true
+            echo ""
+            echo "--- grep undefined reference / error: ---"
+            grep -aE "undefined reference|error:|multiple definition" "$BUILD_LOG" | tail -n 100 || true
+            echo ""
+            echo "--- all log files in build/log: ---"
+            find build/log -type f 2>/dev/null | head -20 || true
             for f in build/log/idf_py_stderr_output_* build/log/idf_py_stdout_output_* build/CMakeFiles/CMakeError.log build/CMakeFiles/CMakeOutput.log; do
               [ -f "$f" ] || continue
               echo ""
               echo "===== $f ====="
-              tail -n 400 "$f"
+              tail -n 400 "$f" || true
             done
+            echo ""
+            echo "--- build.ninja link rules ---"
+            grep -aE "link.*__idf_main" build/build.ninja 2>/dev/null | head -5 || true
             exit 1
-          }
+          fi
+          echo "BUILD OK"
 
     - name: Setup Python + esptool for host runner
       uses: actions/setup-python@v5
@@ -76,17 +93,77 @@ jobs:
         FLASH_MODE="dio"
         FLASH_FREQ="80m"
         FLASH_SIZE="4MB"
+        BOOTLOADER_OFF="0x0"
+        PART_OFF="0x8000"
+        APP_OFF="0x10000"
         line1=$(sed -n '1p' build/flash_args)
         echo "Parsed line: $line1"
-        for tok in $line1; do
-          case "$tok" in
-            dio|qio|dout|qout) FLASH_MODE="$tok" ;;
-            80m|40m|26m|20m)  FLASH_FREQ="$tok" ;;
-            1MB|2MB|4MB|8MB|16MB|32MB|64MB|128MB) FLASH_SIZE="$tok" ;;
-          esac
-        done
-        echo "Flash params: mode=$FLASH_MODE freq=$FLASH_FREQ size=$FLASH_SIZE"
 
+        # flash_args 格式通常是: --flash_mode dio --flash_freq 80m --flash_size 4MB 0x0 bootloader/bootloader.bin 0x8000 partition_table/partition-table.bin 0x10000 Top-AMS.bin
+        # 使用 awk 按顺序提取: 模式/频率/size token，以及形如 0x... 的地址 + 下一个参数 bin 配对
+        python3 <<'PYEOF'
+import re, sys
+with open('build/flash_args') as f:
+    s = f.read().strip()
+tokens = s.split()
+mode = freq = size = None
+boot = part = app = None
+i = 0
+pair = {}  # addr -> bin
+while i < len(tokens):
+    t = tokens[i]
+    if t == '--flash_mode' and i+1 < len(tokens):
+        mode = tokens[i+1]; i += 2; continue
+    if t == '--flash_freq' and i+1 < len(tokens):
+        freq = tokens[i+1]; i += 2; continue
+    if t == '--flash_size' and i+1 < len(tokens):
+        size = tokens[i+1]; i += 2; continue
+    if re.match(r'^0[xX][0-9a-fA-F]+$', t) and i+1 < len(tokens):
+        pair[t.lower()] = tokens[i+1]
+        i += 2; continue
+    i += 1
+
+print(f"FLASH_MODE={mode or 'dio'}")
+print(f"FLASH_FREQ={freq or '80m'}")
+print(f"FLASH_SIZE={size or '4MB'}")
+for a, b in pair.items():
+    if 'bootloader' in b.lower(): print(f"BOOTLOADER_OFF={a}")
+    elif 'partition' in b.lower(): print(f"PART_OFF={a}")
+    elif b.lower().endswith('.bin'): print(f"APP_OFF={a}")
+PYEOF
+        # 将上面 python 解析的值导入 shell
+        eval $(python3 <<'PYEOF'
+import re
+with open('build/flash_args') as f: s = f.read().strip()
+tokens = s.split()
+mode = freq = size = None
+boot = part = app = None
+i = 0
+pair = {}
+while i < len(tokens):
+    t = tokens[i]
+    if t == '--flash_mode' and i+1 < len(tokens):
+        mode = tokens[i+1]; i += 2; continue
+    if t == '--flash_freq' and i+1 < len(tokens):
+        freq = tokens[i+1]; i += 2; continue
+    if t == '--flash_size' and i+1 < len(tokens):
+        size = tokens[i+1]; i += 2; continue
+    if re.match(r'^0[xX][0-9a-fA-F]+$', t) and i+1 < len(tokens):
+        pair[t.lower()] = tokens[i+1]
+        i += 2; continue
+    i += 1
+print(f"export FLASH_MODE='{mode or 'dio'}'")
+print(f"export FLASH_FREQ='{freq or '80m'}'")
+print(f"export FLASH_SIZE='{size or '4MB'}'")
+for a, b in pair.items():
+    if 'bootloader' in b.lower(): print(f"export BOOTLOADER_OFF='{a}'")
+    elif 'partition' in b.lower(): print(f"export PART_OFF='{a}'")
+    elif b.lower().endswith('.bin'): print(f"export APP_OFF='{a}'")
+PYEOF
+)
+
+        echo ""
+        echo "Parsed: mode=$FLASH_MODE freq=$FLASH_FREQ size=$FLASH_SIZE boot=$BOOTLOADER_OFF part=$PART_OFF app=$APP_OFF"
         echo ""
         echo "=== Merging to single BIN ==="
         python -m esptool \
@@ -96,14 +173,37 @@ jobs:
           --flash_mode "$FLASH_MODE" \
           --flash_freq "$FLASH_FREQ" \
           --flash_size "$FLASH_SIZE" \
-          0x0 build/bootloader/bootloader.bin \
-          0x8000 build/partition_table/partition-table.bin \
-          0x10000 build/Top-AMS.bin
+          "$BOOTLOADER_OFF" build/bootloader/bootloader.bin \
+          "$PART_OFF" build/partition_table/partition-table.bin \
+          "$APP_OFF" build/Top-AMS.bin
 
         cp build/bootloader/bootloader.bin output/
         cp build/partition_table/partition-table.bin output/
         cp build/Top-AMS.bin output/
         cp build/flash_args output/
+
+        {
+          echo ""
+          echo "## 拆分刷写参数（解析自 flash_args）："
+          echo ""
+          echo "BOOTLOADER_OFF=$BOOTLOADER_OFF"
+          echo "PART_OFF=$PART_OFF"
+          echo "APP_OFF=$APP_OFF"
+          echo "FLASH_MODE=$FLASH_MODE"
+          echo "FLASH_FREQ=$FLASH_FREQ"
+          echo "FLASH_SIZE=$FLASH_SIZE"
+        } > output/flash_vars.txt
+        cat output/flash_vars.txt
+
+        # 导出到 GITHUB_ENV，使后续 release body 可以使用
+        {
+          echo "FLASH_MODE=$FLASH_MODE"
+          echo "FLASH_FREQ=$FLASH_FREQ"
+          echo "FLASH_SIZE=$FLASH_SIZE"
+          echo "BOOTLOADER_OFF=$BOOTLOADER_OFF"
+          echo "PART_OFF=$PART_OFF"
+          echo "APP_OFF=$APP_OFF"
+        } >> "$GITHUB_ENV"
 
         echo ""
         echo "=== Final output files ==="
@@ -112,6 +212,9 @@ jobs:
         echo ""
         echo "Single flash write command (0x0 only):"
         echo "esptool.py --chip esp32c3 write_flash 0x0 Top-AMS-full.bin"
+        echo ""
+        echo "Split flash write command:"
+        echo "esptool.py --chip esp32c3 --flash_mode $FLASH_MODE --flash_freq $FLASH_FREQ --flash_size $FLASH_SIZE write_flash $BOOTLOADER_OFF bootloader.bin $PART_OFF partition-table.bin $APP_OFF Top-AMS.bin"
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v5
@@ -144,10 +247,10 @@ jobs:
           | 文件 | 说明 | 刷写地址 |
           |------|------|----------|
           | **Top-AMS-full.bin** | **推荐！单文件一键刷写** | 0x0 |
-          | `bootloader.bin` | 引导加载程序 (拆分版) | 0x0 |
-          | `partition-table.bin` | 分区表 (拆分版) | 0x8000 |
-          | `Top-AMS.bin` | 主程序固件 (拆分版) | 0x10000 |
-          | `flash_args` | 烧录参数参考 | - |
+          | `bootloader.bin` | 引导加载程序 (拆分版) | ${{ env.BOOTLOADER_OFF }} |
+          | `partition-table.bin` | 分区表 (拆分版) | ${{ env.PART_OFF }} |
+          | `Top-AMS.bin` | 主程序固件 (拆分版) | ${{ env.APP_OFF }} |
+          | `flash_args` / `flash_vars.txt` | 烧录参数参考 (以文件内容为准) | - |
 
           ### 🔥 推荐：一键单文件刷写
           ```bash
@@ -158,10 +261,10 @@ jobs:
           ### 拆分版刷写 (需要3个文件)
           ```bash
           esptool.py --chip esp32c3 --before default_reset --after hard_reset write_flash \
-            --flash_mode dio --flash_freq 80m --flash_size 4MB \
-            0x0 bootloader.bin \
-            0x8000 partition-table.bin \
-            0x10000 Top-AMS.bin
+            --flash_mode ${{ env.FLASH_MODE }} --flash_freq ${{ env.FLASH_FREQ }} --flash_size ${{ env.FLASH_SIZE }} \
+            ${{ env.BOOTLOADER_OFF }} bootloader.bin \
+            ${{ env.PART_OFF }} partition-table.bin \
+            ${{ env.APP_OFF }} Top-AMS.bin
           ```
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -183,10 +286,10 @@ jobs:
           | 文件 | 说明 | 刷写地址 |
           |------|------|----------|
           | **Top-AMS-full.bin** | **推荐！单文件一键刷写** | 0x0 |
-          | `bootloader.bin` | 引导加载程序 (拆分版) | 0x0 |
-          | `partition-table.bin` | 分区表 (拆分版) | 0x8000 |
-          | `Top-AMS.bin` | 主程序固件 (拆分版) | 0x10000 |
-          | `flash_args` | 烧录参数参考 | - |
+          | `bootloader.bin` | 引导加载程序 (拆分版) | ${{ env.BOOTLOADER_OFF }} |
+          | `partition-table.bin` | 分区表 (拆分版) | ${{ env.PART_OFF }} |
+          | `Top-AMS.bin` | 主程序固件 (拆分版) | ${{ env.APP_OFF }} |
+          | `flash_args` / `flash_vars.txt` | 烧录参数参考 (以文件内容为准) | - |
 
           ### 🔥 推荐：一键单文件刷写
           ```bash
@@ -197,10 +300,10 @@ jobs:
           ### 拆分版刷写 (需要3个文件)
           ```bash
           esptool.py --chip esp32c3 --before default_reset --after hard_reset write_flash \
-            --flash_mode dio --flash_freq 80m --flash_size 4MB \
-            0x0 bootloader.bin \
-            0x8000 partition-table.bin \
-            0x10000 Top-AMS.bin
+            --flash_mode ${{ env.FLASH_MODE }} --flash_freq ${{ env.FLASH_FREQ }} --flash_size ${{ env.FLASH_SIZE }} \
+            ${{ env.BOOTLOADER_OFF }} bootloader.bin \
+            ${{ env.PART_OFF }} partition-table.bin \
+            ${{ env.APP_OFF }} Top-AMS.bin
           ```
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
