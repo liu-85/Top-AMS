@@ -96,71 +96,41 @@ jobs:
         BOOTLOADER_OFF="0x0"
         PART_OFF="0x8000"
         APP_OFF="0x10000"
-        line1=$(sed -n '1p' build/flash_args)
-        echo "Parsed line: $line1"
 
-        # flash_args 格式通常是: --flash_mode dio --flash_freq 80m --flash_size 4MB 0x0 bootloader/bootloader.bin 0x8000 partition_table/partition-table.bin 0x10000 Top-AMS.bin
-        # 使用 awk 按顺序提取: 模式/频率/size token，以及形如 0x... 的地址 + 下一个参数 bin 配对
-        python3 <<'PYEOF'
-import re, sys
-with open('build/flash_args') as f:
-    s = f.read().strip()
-tokens = s.split()
-mode = freq = size = None
-boot = part = app = None
-i = 0
-pair = {}  # addr -> bin
-while i < len(tokens):
-    t = tokens[i]
-    if t == '--flash_mode' and i+1 < len(tokens):
-        mode = tokens[i+1]; i += 2; continue
-    if t == '--flash_freq' and i+1 < len(tokens):
-        freq = tokens[i+1]; i += 2; continue
-    if t == '--flash_size' and i+1 < len(tokens):
-        size = tokens[i+1]; i += 2; continue
-    if re.match(r'^0[xX][0-9a-fA-F]+$', t) and i+1 < len(tokens):
-        pair[t.lower()] = tokens[i+1]
-        i += 2; continue
-    i += 1
+        echo "--- Parsing build/flash_args via awk ---"
+        cat build/flash_args
+        echo ""
 
-print(f"FLASH_MODE={mode or 'dio'}")
-print(f"FLASH_FREQ={freq or '80m'}")
-print(f"FLASH_SIZE={size or '4MB'}")
-for a, b in pair.items():
-    if 'bootloader' in b.lower(): print(f"BOOTLOADER_OFF={a}")
-    elif 'partition' in b.lower(): print(f"PART_OFF={a}")
-    elif b.lower().endswith('.bin'): print(f"APP_OFF={a}")
-PYEOF
-        # 将上面 python 解析的值导入 shell
-        eval $(python3 <<'PYEOF'
-import re
-with open('build/flash_args') as f: s = f.read().strip()
-tokens = s.split()
-mode = freq = size = None
-boot = part = app = None
-i = 0
-pair = {}
-while i < len(tokens):
-    t = tokens[i]
-    if t == '--flash_mode' and i+1 < len(tokens):
-        mode = tokens[i+1]; i += 2; continue
-    if t == '--flash_freq' and i+1 < len(tokens):
-        freq = tokens[i+1]; i += 2; continue
-    if t == '--flash_size' and i+1 < len(tokens):
-        size = tokens[i+1]; i += 2; continue
-    if re.match(r'^0[xX][0-9a-fA-F]+$', t) and i+1 < len(tokens):
-        pair[t.lower()] = tokens[i+1]
-        i += 2; continue
-    i += 1
-print(f"export FLASH_MODE='{mode or 'dio'}'")
-print(f"export FLASH_FREQ='{freq or '80m'}'")
-print(f"export FLASH_SIZE='{size or '4MB'}'")
-for a, b in pair.items():
-    if 'bootloader' in b.lower(): print(f"export BOOTLOADER_OFF='{a}'")
-    elif 'partition' in b.lower(): print(f"export PART_OFF='{a}'")
-    elif b.lower().endswith('.bin'): print(f"export APP_OFF='{a}'")
-PYEOF
-)
+        PARSED_TMP=$(mktemp)
+        awk '
+        {
+            line = $0
+            n = split(line, a, " ")
+            mode = "dio"; freq = "80m"; size = "4MB"
+            boot = ""; part = ""; app = ""
+            for (i = 1; i <= n; i++) {
+                t = a[i]
+                if (t == "--flash_mode" && i+1 <= n) { mode = a[++i]; continue }
+                if (t == "--flash_freq" && i+1 <= n) { freq = a[++i]; continue }
+                if (t == "--flash_size" && i+1 <= n) { size = a[++i]; continue }
+                if (t ~ /^0[xX][0-9a-fA-F]+$/ && i+1 <= n) {
+                    addr = tolower(t); bin = a[++i]
+                    bl = tolower(bin)
+                    if (index(bl, "bootloader") > 0) boot = addr
+                    else if (index(bl, "partition") > 0) part = addr
+                    else if (match(bl, /\.bin$/)) app = addr
+                }
+            }
+            printf("export FLASH_MODE=%s\n",     mode)
+            printf("export FLASH_FREQ=%s\n",     freq)
+            printf("export FLASH_SIZE=%s\n",     size)
+            printf("export BOOTLOADER_OFF=%s\n", (boot == "" ? "0x0" : boot))
+            printf("export PART_OFF=%s\n",       (part == "" ? "0x8000" : part))
+            printf("export APP_OFF=%s\n",        (app  == "" ? "0x10000" : app))
+        }' build/flash_args > "$PARSED_TMP"
+        cat "$PARSED_TMP"
+        . "$PARSED_TMP"
+        rm -f "$PARSED_TMP"
 
         echo ""
         echo "Parsed: mode=$FLASH_MODE freq=$FLASH_FREQ size=$FLASH_SIZE boot=$BOOTLOADER_OFF part=$PART_OFF app=$APP_OFF"
