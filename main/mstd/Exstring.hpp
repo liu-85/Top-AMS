@@ -110,6 +110,8 @@ namespace mstd {
     struct to_Exstring_size<unsigned int> {
         constexpr static size_t value = 11;
     };
+
+#if !(defined(__riscv) || defined(__XTENSA__))
     template <>
     struct to_Exstring_size<long> {
         constexpr static size_t value = 21;
@@ -118,6 +120,7 @@ namespace mstd {
     struct to_Exstring_size<unsigned long> {
         constexpr static size_t value = 21;
     };
+#endif
     template <size_t N>
     struct to_Exstring_size<const char[N]> {
         constexpr static size_t value = N;

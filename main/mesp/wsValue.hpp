@@ -299,8 +299,9 @@ namespace mesp {
 
 
     //@brief WebSocket消息打印
-    inline void webfpr(const Exstring<128>& str) {
-        constexpr static size_t max_size = 256;
+    template <size_t N>
+    inline void webfpr(const Exstring<N>& str) {
+        constexpr static size_t max_size = 1024;
 
         mstd::fpr("wsmsg: ", str);
         static StaticJsonDocument<max_size> doc;
@@ -313,6 +314,10 @@ namespace mesp {
         static char buffer[max_size];
         size_t len = serializeJson(doc, buffer, max_size);
         ws_server.textAll(buffer, len);
+    }
+
+    inline void webfpr(const char* str) {
+        webfpr(Exstring<256>(str));
     }
 
 

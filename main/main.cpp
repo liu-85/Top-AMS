@@ -60,8 +60,7 @@ inline bool ota_in_progress = false;
         webfpr("开始OTA更新,总大小:" + Exstring(total_size));
 
         if (!Update.begin(total_size, U_FLASH)) {
-            Exstring<128> err("OTA begin失败,错误:" + Exstring(Update.getError()));
-            webfpr(err);
+            webfpr("OTA begin失败,错误:" + Exstring(Update.getError()));
             Update.end(false);
             ota_in_progress = false;
             return;
@@ -82,8 +81,7 @@ inline bool ota_in_progress = false;
 
             size_t wrote = Update.write(buf, got);
             if (wrote != got) {
-                Exstring<128> err("OTA写入失败,已写:" + Exstring(wrote) + "期望:" + Exstring(got) + "错误:" + Exstring(Update.getError()));
-                webfpr(err);
+                webfpr("OTA写入失败,已写:" + Exstring(wrote) + "期望:" + Exstring(got) + "错误:" + Exstring(Update.getError()));
                 break;
             }
 
@@ -101,8 +99,7 @@ inline bool ota_in_progress = false;
             webfpr("OTA写入成功,准备重启...");
             success = true;
         } else {
-            Exstring<128> err("OTA失败,剩余:" + Exstring(remaining) + "错误:" + Exstring(Update.getError()));
-            webfpr(err);
+            webfpr("OTA失败,剩余:" + Exstring(remaining) + "错误:" + Exstring(Update.getError()));
             Update.end(false);
         }
 
@@ -125,7 +122,8 @@ inline bool ota_in_progress = false;
             return;
         }
 
-        webfpr("开始从URL下载固件:" + url);
+        webfpr("开始从URL下载固件:");
+        webfpr(url);
 
         HTTPClient http;
         http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
@@ -138,8 +136,7 @@ inline bool ota_in_progress = false;
 
         int httpCode = http.GET();
         if (httpCode != HTTP_CODE_OK) {
-            Exstring<128> err("HTTP请求失败,状态码:" + Exstring(httpCode));
-            webfpr(err);
+            webfpr("HTTP请求失败,状态码:" + Exstring(httpCode));
             http.end();
             return;
         }
@@ -640,8 +637,7 @@ extern "C" void app_main(void) {
             [](AsyncWebServerRequest* request) {
                 AsyncWebServerResponse* response;
                 if (Update.hasError()) {
-                    Exstring<128> err("OTA更新失败,错误:" + Exstring(Update.getError()));
-                    webfpr(err);
+                    webfpr("OTA更新失败,错误:" + Exstring(Update.getError()));
                     response = request->beginResponse(500, "application/json",
                         "{\"success\":false,\"message\":\"OTA更新失败\"}");
                 } else {
@@ -658,12 +654,12 @@ extern "C" void app_main(void) {
             [](AsyncWebServerRequest* request, const String& filename, size_t index, uint8_t* data, size_t len, bool final) {
                 if (!index) {
                     fpr("OTA文件上传开始,文件名:", filename.c_str());
-                    webfpr("开始OTA文件上传,文件名:" + Exstring(filename.c_str()));
+                    webfpr("开始OTA文件上传,文件名:");
+                    webfpr(filename.c_str());
                     ota_in_progress = true;
                     size_t uploadSize = request->contentLength();
                     if (!Update.begin(uploadSize, U_FLASH)) {
-                        Exstring<128> err("OTA begin失败,错误:" + Exstring(Update.getError()));
-                        webfpr(err);
+                        webfpr("OTA begin失败,错误:" + Exstring(Update.getError()));
                         Update.end(false);
                         ota_in_progress = false;
                         return;
@@ -673,8 +669,7 @@ extern "C" void app_main(void) {
                 if (len) {
                     size_t written = Update.write(data, len);
                     if (written != len) {
-                        Exstring<128> err("OTA写入失败,已写:" + Exstring(written) + "期望:" + Exstring(len));
-                        webfpr(err);
+                        webfpr("OTA写入失败,已写:" + Exstring(written) + "期望:" + Exstring(len));
                     }
                 }
                 if (final) {
@@ -682,8 +677,7 @@ extern "C" void app_main(void) {
                         webfpr("OTA写入完成");
                         ota_in_progress = false;
                     } else {
-                        Exstring<128> err("OTA结束失败,错误:" + Exstring(Update.getError()));
-                        webfpr(err);
+                        webfpr("OTA结束失败,错误:" + Exstring(Update.getError()));
                         Update.end(false);
                         ota_in_progress = false;
                     }
