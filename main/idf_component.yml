@@ -2,7 +2,7 @@
 dependencies:
   ## Required IDF version
   idf:
-    version: '>=5.1.0'
+    version: '>=5.1.0,<5.6'
   # # Put list of dependencies here
   # # For components maintained by Espressif:
   # component: "~1.0.0"
@@ -17,4 +17,3 @@ dependencies:
   espressif/arduino-esp32: ^3.3.5
   esp32async/espasyncwebserver: ^3.9.4
   bblanchon/arduinojson: ^7.4.2
-  espressif/mbedtls: ^1.0.0
