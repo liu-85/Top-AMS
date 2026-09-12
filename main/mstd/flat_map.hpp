@@ -33,7 +33,7 @@ namespace mstd {
 
         template <typename T, typename Y>
         constexpr void emplace(T&& k, Y&& m) {
-            auto target = std::ranges::lower_bound(map, k, std::ranges::less{}, [](auto const& p) -> const auto& {
+            auto target = std::ranges::lower_bound(map, k, [](const auto& a, const auto& b) { return a < b; }, [](auto const& p) -> const auto& {
                 return std::get<0>(p);
             });
             if (target != end() && std::get<0>(*target) == k) {
@@ -45,7 +45,7 @@ namespace mstd {
         }//emplace
 
         constexpr auto find(const key_type& k) {
-            auto it = std::ranges::lower_bound(map, k, std::ranges::less{}, [](auto const& p) -> const auto& {
+            auto it = std::ranges::lower_bound(map, k, [](const auto& a, const auto& b) { return a < b; }, [](auto const& p) -> const auto& {
                 return std::get<0>(p);
             });
             if (it != map.end() && std::get<0>(*it) == k)
@@ -54,7 +54,7 @@ namespace mstd {
         }//find
 
         constexpr auto find(const key_type& k) const {
-            auto it = std::ranges::lower_bound(map, k, std::ranges::less{}, [](auto const& p) -> const auto& {
+            auto it = std::ranges::lower_bound(map, k, [](const auto& a, const auto& b) { return a < b; }, [](auto const& p) -> const auto& {
                 return std::get<0>(p);
             });
             if (it != map.end() && std::get<0>(*it) == k)
