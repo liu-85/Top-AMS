@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <algorithm>
+#include <ranges>
 #include <tuple>
 #include <vector>
 
@@ -42,29 +44,44 @@ namespace mstd {
             map.insert(target, pair_type(std::forward<T>(k), std::forward<Y>(m)));
         }//emplace
 
-        constexpr auto find(this auto&& This, const key_type& k) {
-            auto it = std::ranges::lower_bound(This.map, k, std::ranges::less{}, [](auto const& p) -> const auto& {
+        constexpr auto find(const key_type& k) {
+            auto it = std::ranges::lower_bound(map, k, std::ranges::less{}, [](auto const& p) -> const auto& {
                 return std::get<0>(p);
             });
-            if (it != This.map.end() && std::get<0>(*it) == k)
+            if (it != map.end() && std::get<0>(*it) == k)
                 return it;
-            return This.map.end();
+            return map.end();
         }//find
 
-        constexpr auto operator[](this auto&& This, const key_type& k) -> mapped_type& {
-            auto target = This.find(k);
-            if (target != This.map.end()) {
+        constexpr auto find(const key_type& k) const {
+            auto it = std::ranges::lower_bound(map, k, std::ranges::less{}, [](auto const& p) -> const auto& {
+                return std::get<0>(p);
+            });
+            if (it != map.end() && std::get<0>(*it) == k)
+                return it;
+            return map.end();
+        }//find const
+
+        constexpr mapped_type& operator[](const key_type& k) {
+            auto target = find(k);
+            if (target != map.end()) {
                 return std::get<1>(*target);
             }
-            This.emplace(k, mapped_type{});//当然,前提是支持默认构造,这里或许可以考虑搞个模板偏序处理
-            return This[k];
+            emplace(k, mapped_type{});
+            return this->operator[](k);
         }
 
-        constexpr auto begin(this auto&& This) noexcept {
-            return This.map.begin();
+        constexpr auto begin() noexcept {
+            return map.begin();
         }
-        constexpr auto end(this auto&& This) noexcept {
-            return This.map.end();
+        constexpr auto begin() const noexcept {
+            return map.begin();
+        }
+        constexpr auto end() noexcept {
+            return map.end();
+        }
+        constexpr auto end() const noexcept {
+            return map.end();
         }
 
         constexpr void erase(const key_type& k) {

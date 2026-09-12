@@ -11,62 +11,65 @@
 #include "Meta.hpp"
 #include "other.hpp"
 #include <compare>
+#include <utility>
 
 namespace mstd {
 
-    struct rangebase {
+    template <typename Derived>
+    struct rangebase_crtp {
 
-        //   private:
-        constexpr decltype(auto) data(this auto&& This) noexcept {
-            return This.data();
-        }
-
-        constexpr decltype(auto) size(this const auto& This) noexcept {
-            return This.size();
-        }
+      private:
+        constexpr Derived* self() noexcept { return static_cast<Derived*>(this); }
+        constexpr const Derived* self() const noexcept { return static_cast<const Derived*>(this); }
 
       public:
-        template <typename T>
-        constexpr decltype(auto) operator[](this T&& This, size_t index) noexcept {
-            return std::forward_like<T>(This.data()[index]);
+        constexpr decltype(auto) operator[](size_t index) & noexcept {
+            return self()->data()[index];
+        }
+        constexpr decltype(auto) operator[](size_t index) const& noexcept {
+            return self()->data()[index];
         }
 
-        constexpr decltype(auto) begin(this auto&& This) noexcept {
-            return This.data();
+        constexpr auto begin() & noexcept {
+            return self()->data();
         }
-        constexpr decltype(auto) end(this auto&& This) noexcept {
-            return This.data() + This.size();
+        constexpr auto begin() const& noexcept {
+            return self()->data();
+        }
+        constexpr auto end() & noexcept {
+            return self()->data() + self()->size();
+        }
+        constexpr auto end() const& noexcept {
+            return self()->data() + self()->size();
         }
 
-        constexpr bool empty(this const auto& This) noexcept {
-            return This.size() == 0;
+        constexpr bool empty() const noexcept {
+            return self()->size() == 0;
         }
 
-
-        //比较符号类目前不限制两边类型
-
-        constexpr bool operator==(this const auto& This, const auto& r) noexcept {
-            if (This.size() != r.size())
+        template <typename R>
+        constexpr bool operator==(const R& r) const noexcept {
+            if (self()->size() != r.size())
                 return false;
-            for (size_t i = 0; i < This.size(); i++) {
-                if (This[i] != r[i])
+            for (size_t i = 0; i < self()->size(); i++) {
+                if ((*self())[i] != r[i])
                     return false;
             }
             return true;
         }
 
-        constexpr std::strong_ordering operator<=>(this const auto& This, const auto& r) noexcept {
-            size_t min_size = This.size() < r.size() ? This.size() : r.size();
+        template <typename R>
+        constexpr std::strong_ordering operator<=>(const R& r) const noexcept {
+            size_t s = self()->size();
+            size_t min_size = s < r.size() ? s : r.size();
             for (size_t i = 0; i < min_size; i++) {
-                if (This[i] < r[i])
+                if ((*self())[i] < r[i])
                     return std::strong_ordering::less;
-                else if (This[i] > r[i])
+                else if ((*self())[i] > r[i])
                     return std::strong_ordering::greater;
             }
-            return This.size() <=> r.size();
+            return s <=> r.size();
         }
-
-    };//range_base
-
+    };
 
 }//mstd;

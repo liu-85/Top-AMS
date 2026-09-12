@@ -131,12 +131,15 @@ namespace mesp {
             template <typename... V>
             __data_type(const key_type& k, V&&... v) : _key(k), _value(std::forward<V>(v)...) {}
 
-            auto& value(this auto&& This) noexcept {
-                return This._value;
-            }
-            auto& key(this auto&& This) noexcept {
-                return This._key;
-            }
+            Y& value() & noexcept { return _value; }
+            const Y& value() const& noexcept { return _value; }
+            Y&& value() && noexcept { return std::move(_value); }
+            const Y&& value() const&& noexcept { return std::move(_value); }
+
+            key_type& key() & noexcept { return _key; }
+            const key_type& key() const& noexcept { return _key; }
+            key_type&& key() && noexcept { return std::move(_key); }
+            const key_type&& key() const&& noexcept { return std::move(_key); }
         };
 
         template <typename Y>
@@ -146,12 +149,15 @@ namespace mesp {
             template <typename... V>
             __data_type(const key_type& k, V&&... v) : data(k, std::forward<V>(v)...) {}
 
-            auto& value(this auto&& This) noexcept {
-                return This.data;
-            }
-            auto& key(this auto&& This) noexcept {
-                return This.data.key;
-            }
+            nvs_value<Y>& value() & noexcept { return data; }
+            const nvs_value<Y>& value() const& noexcept { return data; }
+            nvs_value<Y>&& value() && noexcept { return std::move(data); }
+            const nvs_value<Y>&& value() const&& noexcept { return std::move(data); }
+
+            key_type& key() & noexcept { return data.key; }
+            const key_type& key() const& noexcept { return data.key; }
+            key_type&& key() && noexcept { return std::move(data.key); }
+            const key_type&& key() const&& noexcept { return std::move(data.key); }
         };
 
         __data_type<T> data;

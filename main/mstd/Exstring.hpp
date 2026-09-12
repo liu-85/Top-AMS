@@ -10,35 +10,45 @@
 
 #include "rangebase.hpp"
 #include <charconv>
+#include <algorithm>
 
 
 namespace mstd {
 
 
-    struct Exstring_base : rangebase {
+    template <typename Derived>
+    struct Exstring_base_crtp : rangebase_crtp<Derived> {
 
         using value_type = char;
         using point_type = value_type*;
         using const_point_type = const value_type*;
 
-        constexpr const_point_type c_str(this auto&& This) noexcept {
-            return This.data();
+      private:
+        constexpr Derived* self() noexcept { return static_cast<Derived*>(this); }
+        constexpr const Derived* self() const noexcept { return static_cast<const Derived*>(this); }
+
+      public:
+        constexpr const_point_type c_str() const noexcept {
+            return self()->data();
         }
 
-        using rangebase::operator==;
+        template <typename R>
+        constexpr bool operator==(const R& r) const noexcept {
+            return rangebase_crtp<Derived>::operator==(r);
+        }
 
         template <size_t N>
-        constexpr bool operator==(this const auto& This, const value_type (&r)[N]) noexcept {
-            if (This.size() != N - 1)
+        constexpr bool operator==(const value_type (&r)[N]) const noexcept {
+            if (self()->size() != N - 1)
                 return false;
             for (size_t i = 0; i < N; i++) {
-                if (This[i] != r[i])
+                if ((*self())[i] != r[i])
                     return false;
             }
             return true;
         }
 
-    };//Exstring_base
+    };//Exstring_base_crtp
 
 
     template <size_t... N>
@@ -55,15 +65,16 @@ namespace mstd {
 
 
     template <>
-    struct Exstring<> : Exstring_base {
+    struct Exstring<> : Exstring_base_crtp<Exstring<>> {
+        using value_type = char;
         std::vector<value_type> _data{};
 
         constexpr Exstring() = default;
 
+        constexpr value_type* data() noexcept { return _data.data(); }
+        constexpr const value_type* data() const noexcept { return _data.data(); }
+        constexpr size_t size() const noexcept { return _data.size(); }
 
-        //@_@后面有空再写
-        //主要是干啥都要扩容,需要更好的堆基础设施
-        //+的表达式模板
     };//Exstring<>
 
     template <typename T>
@@ -130,17 +141,18 @@ namespace mstd {
         constexpr static size_t value = N;
     };
 
-    // 浮点类型后面再补@_@,位数这些要确定一下,有扩展系数
-
     template <typename T>
     inline constexpr size_t to_Exstring_v = to_Exstring_size<Meta::rm_cref<T>>::value;
 
 
 
     template <size_t N>
-    struct Exstring<N> : Exstring_base {
+    struct Exstring<N> : Exstring_base_crtp<Exstring<N>> {
+        using value_type = char;
+        using point_type = value_type*;
+        using const_point_type = const value_type*;
+
         constexpr static size_t _max_size = N;
-        // private:
         std::array<value_type, N> _data{};
         size_t _size = 0;
 
@@ -151,12 +163,11 @@ namespace mstd {
         template <size_t M>
         constexpr Exstring(const value_type (&S)[M]) {
             static_assert(M <= N, "stack_string overflow");
-            for (std::make_signed_t<size_t> i = 0; i < M - 1; i++)// 结尾的'\0'无须拷贝
+            for (std::make_signed_t<size_t> i = 0; i < M - 1; i++)
                 _data[i] = S[i];
             _size = M - 1;
         }
 
-        //过长会直接截断
         constexpr Exstring(const value_type* S) {
             size_t i = 0;
             for (; i < N - 1; i++) {
@@ -167,7 +178,6 @@ namespace mstd {
             _size = i;
         }
 
-        //过长会直接截断
         constexpr Exstring(const value_type* S, size_t len) {
             size_t i = 0;
             for (; i < std::min(len, N - 1); i++)
@@ -176,10 +186,9 @@ namespace mstd {
         }
 
         template <size_t M>
-        // requires (M <= N)
         constexpr Exstring(const Exstring<M>& r) {
             static_assert(M <= N, "stack_string overflow");
-            for (size_t i = 0; i < r._size; i++)// 结尾的'\0'无须拷贝
+            for (size_t i = 0; i < r._size; i++)
                 _data[i] = r[i];
             _size = r._size;
         }
@@ -196,8 +205,11 @@ namespace mstd {
         }
 
 
-        constexpr decltype(auto) data(this Meta::base_same<Exstring> auto&& This) noexcept {
-            return This._data.data();
+        constexpr value_type* data() noexcept {
+            return _data.data();
+        }
+        constexpr const value_type* data() const noexcept {
+            return _data.data();
         }
 
         constexpr size_t size() const noexcept {
@@ -207,8 +219,7 @@ namespace mstd {
             return N;
         }
 
-        constexpr Exstring<N + 1> operator-() const
-            noexcept {// 用于数字类型的字符串,反正其他类型也用不到负号,这里就不套一层代理类了
+        constexpr Exstring<N + 1> operator-() const noexcept {
             Exstring<N + 1> res;
             res[0] = '-';
             for (size_t i = 0; i < _size; i++)
@@ -256,8 +267,8 @@ namespace mstd {
         return r == l;
     }
 
-    template <size_t... N>
-    std::ostream& operator<<(std::ostream& os, const Exstring<N...>& ss) {
+    template <size_t... Ns>
+    std::ostream& operator<<(std::ostream& os, const Exstring<Ns...>& ss) {
         os << ss.c_str();
         return os;
     }

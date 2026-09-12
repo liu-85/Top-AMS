@@ -17,6 +17,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include <deque>
+#include <semaphore>
 
 namespace mstd {
     //临时放一下
