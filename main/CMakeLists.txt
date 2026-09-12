@@ -8,11 +8,7 @@ idf_component_register(SRCS "main.cpp"
                         lwip
                         esp_http_client
                         esp_https_ota
-                        esp_tls
-                        mbedtls
                         app_update
-                        mqtt
-                        http_parser
                         espressif__arduino-esp32
                         esp32async__espasyncwebserver
                         bblanchon__arduinojson)
